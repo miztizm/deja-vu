@@ -211,3 +211,30 @@ func compactionWrite(t *testing.T, path, text string) {
 		t.Fatal(err)
 	}
 }
+
+// A worktree with millions of untracked files made this listing outlive the
+// compaction hook: git walks the tree before it emits the first path, so the
+// shared deadline could not stop the walk, it only stopped us waiting for it.
+// The listing now carries its own budget, and a workspace past the cap is
+// partial either way — so a slow walk must cost the budget, not the hook.
+func TestUntrackedListingStopsAtItsOwnBudget(t *testing.T) {
+	repo := compactionGitRepo(t)
+	compactionWrite(t, filepath.Join(repo, "nested", "note.txt"), "one\n")
+
+	generous := untrackedFingerprintBudget
+	t.Cleanup(func() { untrackedFingerprintBudget = generous })
+
+	untrackedFingerprintBudget = time.Nanosecond
+	started := time.Now()
+	if !hashUntrackedStream(t.Context(), sha256.New(), repo) {
+		t.Fatal("an expired budget still produced a complete untracked fingerprint")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("untracked listing outlived its budget by %s", elapsed)
+	}
+
+	untrackedFingerprintBudget = generous
+	if hashUntrackedStream(t.Context(), sha256.New(), repo) {
+		t.Fatal("a worktree with one small untracked file should fingerprint completely")
+	}
+}
