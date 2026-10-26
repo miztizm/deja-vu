@@ -27,24 +27,6 @@ const (
 	maxUntrackedFingerprintBytes     = 8 << 20
 )
 
-// untrackedFingerprintBudget bounds the untracked listing on its own.
-//
-// Every other git call this file makes reads what the index already knows:
-// status, diff, rev-parse. The untracked listing is the exception — it walks the
-// worktree, and a workspace that keeps a reference corpus or build output
-// untracked can hold millions of files. git emits the first path only after it
-// has walked the tree, so a shared deadline cannot stop the walk early, it can
-// only stop us waiting: the entry cap would flag the digest partial anyway, and
-// the compaction hook has already spent its budget by then.
-//
-// A variable, not a constant, so tests can pin the slow case.
-var untrackedFingerprintBudget = 500 * time.Millisecond
-
-// untrackedFingerprintWaitDelay bounds how long Wait waits for a cancelled
-// listing to release its pipe. Without it a git that ignores the kill holds the
-// hook open past its budget.
-const untrackedFingerprintWaitDelay = 250 * time.Millisecond
-
 // boundedWorktreeDigest fingerprints tracked changes and a bounded amount of
 // untracked content. It streams Git output and file bytes instead of retaining
 // either in memory. A partial: prefix means the scan could not verify every
@@ -130,20 +112,24 @@ func hashGitStream(ctx context.Context, h io.Writer, root string, args ...string
 	if err := cmd.Start(); err != nil {
 		return false
 	}
+	defer closeAtDeadline(ctx, stdout)()
 	_, copyErr := io.Copy(h, stdout)
 	waitErr := cmd.Wait()
 	return copyErr == nil && waitErr == nil
 }
 
+// closeAtDeadline closes stdout when ctx ends. The context kills git, but a
+// child git left behind (a shim's real git, #5620) still holds the pipe, and a
+// read on it waits for that child however long its walk takes: 118s over a
+// worktree with 1.8M untracked files. WaitDelay does not help here, exec only
+// closes the pipes it copies itself, not one handed out by StdoutPipe.
+func closeAtDeadline(ctx context.Context, stdout io.Closer) (stop func() bool) {
+	return context.AfterFunc(ctx, func() { _ = stdout.Close() })
+}
+
 // hashUntrackedStream returns true when the resulting fingerprint is partial.
 func hashUntrackedStream(ctx context.Context, h hash.Hash, root string) bool {
-	// Bound the walk separately: it is the only call here whose cost grows with
-	// the worktree rather than with what changed. Waiting longer cannot turn a
-	// workspace past the cap into a usable digest, it only makes the hook slow.
-	ctx, cancel := context.WithTimeout(ctx, untrackedFingerprintBudget)
-	defer cancel()
 	cmd := gitread.Command(ctx, "-C", root, "ls-files", "--others", "--exclude-standard", "-z")
-	cmd.WaitDelay = untrackedFingerprintWaitDelay
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return true
@@ -151,6 +137,7 @@ func hashUntrackedStream(ctx context.Context, h hash.Hash, root string) bool {
 	if err := cmd.Start(); err != nil {
 		return true
 	}
+	defer closeAtDeadline(ctx, stdout)()
 
 	partial := false
 	used := int64(0)
