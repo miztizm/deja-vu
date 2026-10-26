@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reasoning off replied with only that line in 10 of 10 runs. It now asks for
   the answer first and the line last: 10 of 10 answered, 10 still credited
   the recall (#5664).
+- The compaction freshness check stops reading git output at its deadline. A
+  child process left holding the pipe kept it reading until that child exited,
+  which on a worktree with millions of untracked files can take minutes. From
+  @miztizm (#5620, #5621).
 
 ## [0.23.1] - 2026-10-25
 
