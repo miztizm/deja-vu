@@ -823,7 +823,8 @@ import (
 // 105: an apply_patch rename files its hunks under the new name (#595).
 // 106: CodeWhale write_file and fim_edit, Crush lsp_replace_symbol and Reasonix
 // delete_symbol record the side of the change they used to drop (#595).
-const version = 106
+// 107: Gemini resumed sessions drop repeated function responses (#5318).
+const version = 107
 
 // onDiskFormat is how the store is laid out on disk — the record encoding, the
 // bucket encoding, the manifest's own shape. It moves only when a reader of an

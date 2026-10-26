@@ -335,11 +335,54 @@ func parseGeminiJSONLWith(path string, scan func(func(map[string]any)) error) ([
 	if !started {
 		return nil, err
 	}
+	msgs = dedupeGeminiFunctionResponses(msgs)
 	appendGeminiMessages(&s, msgs)
 	if len(s.Messages) == 0 {
 		return nil, err
 	}
 	return []model.Session{s}, err
+}
+
+// dedupeGeminiFunctionResponses removes response parts Gemini writes again
+// when a session is resumed. Gemini 0.64 gives those records new message ids,
+// so the normal turn-id replacement above cannot recognize them as repeats.
+func dedupeGeminiFunctionResponses(msgs []geminiMessage) []geminiMessage {
+	seen := map[string]bool{}
+	out := msgs[:0]
+	for _, m := range msgs {
+		var parts []json.RawMessage
+		if json.Unmarshal(m.Content, &parts) != nil {
+			out = append(out, m)
+			continue
+		}
+		kept := parts[:0]
+		removed := false
+		for _, raw := range parts {
+			var part struct {
+				FunctionResponse *struct {
+					ID string `json:"id"`
+				} `json:"functionResponse"`
+			}
+			if json.Unmarshal(raw, &part) == nil && part.FunctionResponse != nil && part.FunctionResponse.ID != "" {
+				if seen[part.FunctionResponse.ID] {
+					removed = true
+					continue
+				}
+				seen[part.FunctionResponse.ID] = true
+			}
+			kept = append(kept, raw)
+		}
+		if !removed {
+			out = append(out, m)
+			continue
+		}
+		if len(kept) == 0 {
+			continue
+		}
+		m.Content, _ = json.Marshal(kept) //nolint:errchkjson // kept elements came from valid JSON
+		out = append(out, m)
+	}
+	return out
 }
 
 // mergeGeminiSnapshot applies a $set snapshot to the turns read so far. The

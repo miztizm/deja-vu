@@ -95,21 +95,37 @@ func installClineAuto(exe string, uninstall bool) (installResult, error) {
 // a note, another skill or a backup the reader keeps beside those files is
 // theirs and stays (#5300). A directory left behind because its parent is
 // read-only is not a failed uninstall; a file that cannot be removed is.
+// The skill is the one file of the three install may have replaced, so it
+// also gets the restore every other skill uninstall gives: the copy install
+// kept beside it goes back, rather than surviving as a .bak nobody restores
+// while the reader's own SKILL.md is gone (#5588).
 func uninstallClinePlugin(dir string) (installResult, error) {
 	entry := filepath.Join(dir, "index.js")
 	manifest := filepath.Join(dir, "package.json")
 	skill := clineSkillPath()
-	var removed []installResult
-	for _, path := range []string{entry, manifest, skill} {
+	var acted []installResult
+	for _, path := range []string{entry, manifest} {
 		err := os.Remove(path)
 		switch {
 		case err == nil:
-			removed = append(removed, installResult{Path: path, Action: "removed"})
+			acted = append(acted, installResult{Path: path, Action: "removed"})
 		case os.IsNotExist(err):
 			// A partial install or a second uninstall; the rest still goes.
 		default:
 			return installResult{}, err
 		}
+	}
+	if err := os.Remove(skill); err == nil {
+		acted = append(acted, installResult{Path: skill, Action: "removed"})
+	} else if !os.IsNotExist(err) {
+		return installResult{}, err
+	}
+	restored, rerr := restoreReplacedFile(skill, func(b []byte) bool { return isOurGuidance(b, "") })
+	if rerr != nil {
+		return installResult{}, rerr
+	}
+	if restored {
+		acted = append(acted, installResult{Path: skill, Action: "restored"})
 	}
 	// Walk from the innermost directory out. pruneCreatedDir itself stops at
 	// the first level that is missing, linked, not deja's or not empty.
@@ -121,10 +137,10 @@ func uninstallClinePlugin(dir string) (installResult, error) {
 	} {
 		pruneCreatedDir(d)
 	}
-	if len(removed) == 0 {
+	if len(acted) == 0 {
 		return installResult{Path: entry, Action: "unchanged"}, nil
 	}
-	return wroteAll(removed...), nil
+	return wroteAll(acted...), nil
 }
 
 // clineAutoPreflight refuses, before the MCP entry is written, a plugin

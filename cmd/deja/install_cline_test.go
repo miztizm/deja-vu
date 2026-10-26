@@ -224,32 +224,71 @@ func resetClineTestRunRecord() {
 }
 
 // Uninstall used to RemoveAll the plugin directory, so a note or any other
-// file the reader kept beside deja's three went with it (#5300).
+// file the reader kept beside deja's three went with it (#5300). The SKILL.md
+// backup is the one file beside them that does not stay a backup: uninstall
+// puts back the copy install replaced, the same rule every other skill
+// uninstall follows (#5588).
 func TestClineUninstallKeepsFilesBesideThePlugin(t *testing.T) {
 	hermeticEnv(t)
 	dir, entry, manifest, skill := clineTestPaths(t)
 	if _, err := installClineAuto("/bin/deja", false); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	files := map[string]string{
-		filepath.Join(dir, "notes", "todo.md"):                       "mine\n",
-		filepath.Join(dir, "mine.txt"):                               "a file only the reader wrote\n",
-		filepath.Join(dir, "index.js.bak"):                           "an older plugin\n",
-		filepath.Join(dir, "skills", "deja-history", "SKILL.md.bak"): "the reader's copy\n",
+	stays := map[string]string{
+		filepath.Join(dir, "notes", "todo.md"):                   "mine\n",
+		filepath.Join(dir, "mine.txt"):                           "a file only the reader wrote\n",
+		filepath.Join(dir, "index.js.bak"):                       "an older plugin\n",
+		filepath.Join(dir, "skills", "deja-history", "RULES.md"): "the reader's own file\n",
 	}
-	for path, body := range files {
+	for path, body := range stays {
 		writeClineTestFile(t, path, body)
 	}
+	// Planted after install, the .bak carries no replaced file of the
+	// reader's in this test's history — but restoreReplacedFile is
+	// provenance-blind by design (#2581, #2600): a copy beside the skill that
+	// is not deja's goes back, which is what a reader's backup is.
+	writeClineTestFile(t, skill+".bak", "the reader's copy\n")
 	res, err := installClineAuto("/bin/deja", true)
 	if err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
+	// The summary action names the plugin files it removed; the restore is
+	// what the file state below says, the same split the stdout line gives.
 	if res.Action != "removed" {
 		t.Fatalf("uninstall action = %q, want removed", res.Action)
 	}
-	requireClineTestGone(t, entry, manifest, skill)
-	for path, body := range files {
+	requireClineTestGone(t, entry, manifest)
+	requireClineTestFile(t, skill, "the reader's copy\n")
+	if _, err := os.Stat(skill + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("SKILL.md.bak still present after restore: %v", err)
+	}
+	for path, body := range stays {
 		requireClineTestFile(t, path, body)
+	}
+}
+
+// The copy install kept of the skill it replaced is the reader's own file:
+// uninstall puts it back instead of leaving it as a .bak nobody restores
+// while the SKILL.md itself is gone (#5588).
+func TestClineUninstallPutsBackTheReplacedSkill(t *testing.T) {
+	hermeticEnv(t)
+	_, entry, manifest, skill := clineTestPaths(t)
+	writeClineTestFile(t, skill, "mine\n")
+	if _, err := installClineAuto("/bin/deja", false); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	requireClineTestFile(t, skill+".bak", "mine\n")
+	res, err := installClineAuto("/bin/deja", true)
+	if err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if res.Action == "unchanged" {
+		t.Fatalf("uninstall action = %q, want a removal or a restore", res.Action)
+	}
+	requireClineTestGone(t, entry, manifest)
+	requireClineTestFile(t, skill, "mine\n")
+	if _, err := os.Stat(skill + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("SKILL.md.bak still present after restore: %v", err)
 	}
 }
 

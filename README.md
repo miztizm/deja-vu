@@ -123,9 +123,10 @@ or `npx @vshulcz/deja-vu "query"` to try it without installing anything. Desktop
 take MCP servers as bundles can open the `.mcpb` from the
 [latest release](https://github.com/vshulcz/deja-vu/releases/latest); it carries the binary.
 
-Claude Code, Cursor, Qwen and OpenClaw can take the same plugin bundle from
+Claude Code, Qwen and OpenClaw can take the same plugin bundle from
 their own marketplaces instead (Codex has a bundle of its own, in the table under
-[Harnesses with a package of their own](#harnesses-with-a-package-of-their-own)).
+[Harnesses with a package of their own](#harnesses-with-a-package-of-their-own),
+and Cursor has one in [`cursor-plugin/`](cursor-plugin/)).
 Copilot CLI installs it too but takes only the skill, so use `deja install copilot-auto` there:
 
 ```sh
@@ -163,7 +164,7 @@ harness supports, aider's read-only context file, and the Windows `cmd /c deja m
 <details>
 <summary>What gets written into each agent's own guidance file</summary>
 
-Install also writes user-level guidance for the harnesses it detects: Claude Code, Codex, opencode, Gemini CLI, Antigravity, Qwen, Kimi Code, pi, Senpi, Copilot, VS Code Copilot Chat, Goose, OpenClaw, Hermes, Roo Code, omp, Amp, prime-agent, DeepSeek Harness, Continue, Crush, CodeBuddy Code, WorkBuddy, Zed, TRAE CLI, TRAE IDE, Muse Code, CodeWhale, ZCode and Junie each get it in their own guidance file (or under the configured `XDG_CONFIG_HOME`). Re-run rewrites deja's skill or marked block without changing surrounding user content. Use `deja install --all --no-guidance` to opt out; Grok Build and Devin CLI get the shared skill in `~/.agents/skills`, which is what they read; the `~/.grok/GROK.md` written beside it is for the unrelated community CLI that shares that directory. Cursor has no user-level instructions file, so it gets the shared skill in `~/.agents/skills` — one of the four places Cursor reads skills from — read only when something looks relevant rather than every session. Kilo Code, gajae-code, Kimchi, Command Code, Cherry Studio and Reasonix get the skill, and Kiro the skill and a steering file, from their own install target.
+Install also writes user-level guidance for the harnesses it detects: Claude Code, Codex, opencode, Gemini CLI, Antigravity, Qwen, Kimi Code, pi, Senpi, Copilot, VS Code Copilot Chat, Goose, OpenClaw, Hermes, Roo Code, omp, Amp, prime-agent, DeepSeek Harness, Continue, Crush, CodeBuddy Code, WorkBuddy, Zed, TRAE CLI, TRAE IDE, Muse Code, CodeWhale, ZCode and Junie each get it in their own guidance file (or under the configured `XDG_CONFIG_HOME`). Re-run rewrites deja's skill or marked block without changing surrounding user content. Use `deja install --all --no-guidance` to opt out; Grok Build and Devin CLI get the shared skill in `~/.agents/skills`, which is what they read; the `~/.grok/GROK.md` written beside it is for the unrelated community CLI that shares that directory. Cursor has no user-level instructions file, so it gets the shared skill in `~/.agents/skills` — one of the four places Cursor reads skills from — read only when something looks relevant rather than every session. Kilo Code, gajae-code, Kimchi, Command Code, Cherry Studio and Reasonix get the skill, MiniMax Code gets it inside the plugin package, and Kiro the skill and a steering file, from their own install target.
 
 </details>
 
@@ -256,6 +257,8 @@ The server exposes one tool, `deja`, with a `mode`; `deja install` wires it in. 
 costs 477 tokens of definitions a turn, against 8,283 for the largest of the seven servers
 measured in [day zero](https://vshulcz.github.io/deja-vu/guide/day-zero.html). The six
 older tool names (`recall`, `recall_context`, `blame`, `fix`, `how`, `remember`) still answer.
+`deja mcp --context-search` is a separate server with a single `context_search` tool, for
+Qwen Code's External Context MCP Profile v1 ([Qwen page](docs/registry/qwen.md)).
 
 <details>
 <summary>Arguments and return shapes</summary>

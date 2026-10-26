@@ -147,10 +147,15 @@ export default {
     const access = adds.recall ? accessNote(api && api.config, (api && api.id) || "deja-vu") : ""
     let installed = true
 
-    const ask = async (args, input, timeout) => {
-      const out = await run(bin, args, input, process.cwd(), timeout)
+    const ask = async (args, input, timeout, cwd = process.cwd()) => {
+      const out = await run(bin, args, input, cwd, timeout)
       return out
     }
+    // deja recall ranks the project of its working directory first, and the
+    // plugin process runs wherever the gateway was started. A tool registered
+    // as a factory is built for each run with that run's context, whose
+    // workspaceDir is the session's workspace (#5580).
+    const workspace = (ctx) => (ctx && ctx.workspaceDir) || process.cwd()
     const answer = (out) => text(out || (installed ? NOTHING : MISSING))
 
     // --framed: fix and blame print for a person, and what a tool returns goes
@@ -158,36 +163,45 @@ export default {
     // recall frames its own page. /deja below answers the person and stays
     // plain.
     if (adds.tools) {
-      api.registerTool({
-        name: "deja_recall",
-        description:
-          "Search this machine's own past AI coding sessions — every agent used on it, including months before deja was installed. Use before debugging an error or re-implementing something that may already exist, before the first edit in a task and before calling a change done or ready to merge, and whenever the user implies the work happened before.",
-        parameters: RECALL_SCHEMA,
-        async execute(_id, params) {
-          // The page the MCP recall tool serves, framed and budgeted by deja.
-          const call = recallArgv(params)
-          const out = await ask(call, undefined, 120000)
-          return answer(out || (installed ? recallSilence(call) : ""))
-        },
-      })
-      api.registerTool({
-        name: "deja_fix",
-        description:
-          "What this machine ran after that same error before, in the sessions where the error did not come back. Paste the failing output verbatim rather than a paraphrase.",
-        parameters: FIX_SCHEMA,
-        async execute(_id, params) {
-          return answer(await ask(["--framed", ...argv("fix", [], params.error)], undefined, 120000))
-        },
-      })
-      api.registerTool({
-        name: "deja_blame",
-        description:
-          "The past sessions that discussed a file, so you know why it is shaped the way it is before editing, refactoring or deleting it. Session history, not git authorship.",
-        parameters: BLAME_SCHEMA,
-        async execute(_id, params) {
-          return answer(await ask(["--framed", ...argv("blame", [], params.path)], undefined, 120000))
-        },
-      })
+      api.registerTool(
+        (ctx) => ({
+          name: "deja_recall",
+          description:
+            "Search this machine's own past AI coding sessions — every agent used on it, including months before deja was installed. Use before debugging an error or re-implementing something that may already exist, before the first edit in a task and before calling a change done or ready to merge, and whenever the user implies the work happened before.",
+          parameters: RECALL_SCHEMA,
+          async execute(_id, params) {
+            // The page the MCP recall tool serves, framed and budgeted by deja.
+            const call = recallArgv(params)
+            const out = await ask(call, undefined, 120000, workspace(ctx))
+            return answer(out || (installed ? recallSilence(call) : ""))
+          },
+        }),
+        { name: "deja_recall" },
+      )
+      api.registerTool(
+        (ctx) => ({
+          name: "deja_fix",
+          description:
+            "What this machine ran after that same error before, in the sessions where the error did not come back. Paste the failing output verbatim rather than a paraphrase.",
+          parameters: FIX_SCHEMA,
+          async execute(_id, params) {
+            return answer(await ask(["--framed", ...argv("fix", [], params.error)], undefined, 120000, workspace(ctx)))
+          },
+        }),
+        { name: "deja_fix" },
+      )
+      api.registerTool(
+        (ctx) => ({
+          name: "deja_blame",
+          description:
+            "The past sessions that discussed a file, so you know why it is shaped the way it is before editing, refactoring or deleting it. Session history, not git authorship.",
+          parameters: BLAME_SCHEMA,
+          async execute(_id, params) {
+            return answer(await ask(["--framed", ...argv("blame", [], params.path)], undefined, 120000, workspace(ctx)))
+          },
+        }),
+        { name: "deja_blame" },
+      )
     }
 
     // The same three seams `deja install openclaw-auto` writes: the project's
@@ -197,7 +211,7 @@ export default {
     // a compacted session had been shown.
     if (adds.recall) {
       const seen = new Map()
-      // deja's "you have been here" receipt rides under the final reply in a
+      // deja's per-prompt receipt rides under the final reply in a
       // 1:1 chat with the owner on a channel (Telegram, Slack, Discord ...).
       // Not in a group, where other people read the reply, and not on the TUI or
       // the Control UI, which draw the transcript rather than the delivered

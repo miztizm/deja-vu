@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -78,6 +79,73 @@ func TestParseGeminiJSONLWithRewind(t *testing.T) {
 	}
 	if ss[0].Updated.Second() != 6 {
 		t.Fatalf("$set lastUpdated not applied: %v", ss[0].Updated)
+	}
+}
+
+// Gemini 0.64 repeats earlier function responses under fresh message ids when
+// a session is resumed. The repeated record must not duplicate tool output.
+func TestGeminiResumeDedupesFunctionResponses(t *testing.T) {
+	_, chats := geminiTree(t)
+	lines := `{"sessionId":"sess-resume-output","projectHash":"abc","startTime":"2026-10-18T05:25:29.000Z","lastUpdated":"2026-10-18T05:25:39.066Z","kind":"main"}
+{"id":"g1","timestamp":"2026-10-18T05:25:30.000Z","type":"gemini","content":"","toolCalls":[{"id":"write_file_1","name":"write_file","args":{"file_path":"parent.txt","content":"PARENT_LINE"}}]}
+{"id":"u1","timestamp":"2026-10-18T05:25:30.384Z","type":"user","content":[{"functionResponse":{"id":"write_file_1","name":"write_file","response":{"output":"Successfully wrote parent.txt"}}}]}
+{"id":"g2","timestamp":"2026-10-18T05:25:31.000Z","type":"gemini","content":"Created parent.txt."}
+{"id":"u1_response","timestamp":"2026-10-18T05:25:39.066Z","type":"user","content":[{"functionResponse":{"id":"write_file_1","name":"write_file","response":{"output":"Successfully wrote parent.txt"}}}]}
+`
+	p := filepath.Join(chats, "session-2026-10-18T05-25-sess-resume-output.jsonl")
+	if err := os.WriteFile(p, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ss, err := ParseGeminiFile(p)
+	if err != nil || len(ss) != 1 {
+		t.Fatalf("parse: %v, %d sessions", err, len(ss))
+	}
+	outputs := 0
+	for _, m := range ss[0].Messages {
+		if m.Role == RoleToolOutput {
+			outputs++
+		}
+	}
+	if outputs != 1 {
+		t.Fatalf("tool outputs = %d, want 1: %#v", outputs, ss[0].Messages)
+	}
+}
+
+func TestDedupeGeminiFunctionResponsesKeepsDistinctAndMixedParts(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []geminiMessage
+		wantLen  int
+		wantText string
+	}{
+		{
+			name: "same tool name with a distinct call id",
+			messages: []geminiMessage{
+				{Content: json.RawMessage(`[{"functionResponse":{"id":"write_file_1","name":"write_file","response":{"output":"first"}}}]`)},
+				{Content: json.RawMessage(`[{"functionResponse":{"id":"write_file_2","name":"write_file","response":{"output":"second"}}}]`)},
+			},
+			wantLen: 2,
+		},
+		{
+			name: "text beside a repeated response",
+			messages: []geminiMessage{
+				{Content: json.RawMessage(`[{"functionResponse":{"id":"write_file_1","name":"write_file","response":{"output":"first"}}}]`)},
+				{Content: json.RawMessage(`[{"functionResponse":{"id":"write_file_1","name":"write_file","response":{"output":"first"}}},{"text":"keep this note"}]`)},
+			},
+			wantLen:  2,
+			wantText: "keep this note",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dedupeGeminiFunctionResponses(tt.messages)
+			if len(got) != tt.wantLen {
+				t.Fatalf("messages = %d, want %d: %#v", len(got), tt.wantLen, got)
+			}
+			if text := geminiContentText(got[len(got)-1].Content); text != tt.wantText {
+				t.Fatalf("last message text = %q, want %q", text, tt.wantText)
+			}
+		})
 	}
 }
 
