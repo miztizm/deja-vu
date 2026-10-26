@@ -125,6 +125,7 @@ var groups = []group{
 		{"memory-for-reasonix.html", "Reasonix"},
 		{"memory-for-roo.html", "Roo Code"},
 		{"memory-for-senpi.html", "Senpi"},
+		{"memory-for-trae.html", "TRAE CLI"},
 		{"memory-for-copilot-chat.html", "VS Code Copilot Chat"},
 		{"memory-for-windsurf.html", "Windsurf"},
 		{"memory-for-zcode.html", "ZCode"},

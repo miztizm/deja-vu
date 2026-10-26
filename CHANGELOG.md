@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the profile's published schemas and test vectors. `deja mcp` itself
   is unchanged. Register it with `qwen mcp add deja-context deja mcp
   --context-search --timeout 8000 --include-tools context_search` (#5662).
+- `DEJA_RECALL_GLOBAL=1` makes MCP recall, `deja recall` and `deja mcp
+  --context-search` rank every project the same instead of putting the current
+  one first. Unset, nothing changes, and the hooks and the TUI keep their
+  scope. From @Terminator637 (#5674).
+
 ### Changed
 
 - The instructions, skills and extensions no longer tell the agent that a
@@ -36,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Amp threads the plugin writes are filed under the workspace Amp has open,
+  not `amp/plugins`. The plugin took `process.cwd()` for the thread's
+  directory, and Amp runs a plugin from `~/.config/amp/plugins`, so every
+  thread and every hook it sent named that directory. It now reads
+  `amp.system.workspaceRoot`. Run `deja install amp-auto` again to rewrite the
+  plugin; threads already written are corrected the next time they end a
+  turn (#5672).
 - opencode shows the per-prompt line. The plugins kept only the model's half
   of the reply, so the line reached nobody while deja counted it shown and
   held the next one back twenty minutes. opencode 1.x and Kilo now toast it.
@@ -54,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child process left holding the pipe kept it reading until that child exited,
   which on a worktree with millions of untracked files can take minutes. From
   @miztizm (#5620, #5621).
+- On Windows, plugins no longer flash a console window each time they run
+  deja from a GUI host such as the DSH desktop app. Every spawn in the shipped
+  and generated JavaScript plugins and the npm launcher now passes
+  `windowsHide`, and the Hermes plugins pass `CREATE_NO_WINDOW`. Reported by @Deadsoul-114514 (#5635).
 
 ## [0.23.1] - 2026-10-25
 
